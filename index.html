@@ -247,16 +247,20 @@
         }
 
         function showSettings() {
-            document.getElementById('main-screen').classList.add('hidden');
-            document.getElementById('login-screen').classList.remove('hidden');
-            // Load existing values
-            document.getElementById('user-name').value = settings.userName;
-            document.getElementById('app-pass').value = settings.appPass;
-            document.getElementById('api-1').value = settings.apiKeys[0] || "";
-            document.getElementById('api-2').value = settings.apiKeys[1] || "";
-            document.getElementById('api-3').value = settings.apiKeys[2] || "";
-            document.getElementById('ai-prompt').value = settings.prompt;
-        }
+    document.getElementById('main-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
+    
+    // Safety check ke saath values load karein taaki error na aaye
+    if (settings) {
+        document.getElementById('user-name').value = settings.userName || "";
+        document.getElementById('app-pass').value = settings.appPass || "";
+        document.getElementById('api-1').value = (settings.apiKeys && settings.apiKeys[0]) ? settings.apiKeys[0] : "";
+        document.getElementById('api-2').value = (settings.apiKeys && settings.apiKeys[1]) ? settings.apiKeys[1] : "";
+        document.getElementById('api-3').value = (settings.apiKeys && settings.apiKeys[2]) ? settings.apiKeys[2] : "";
+        document.getElementById('ai-prompt').value = settings.prompt || "";
+    }
+}
+
 
         function clearMemory() {
             chatHistory = [];
@@ -327,9 +331,10 @@
                         },
                         body: JSON.stringify({
                              model: "llama-3.3-70b-versatile",
-                            temperature: 0.8,
+                            temperature: 0.9,
                             messages: [
-                                { role: "system", content: settings.prompt },
+                                { role: "system",
+                                content: `Tumhara naam SARA hai. ${settings.prompt}. Hamesha isi personality mein rehna aur short/bold jawab dena.`},
                                 ...chatHistory
                             ]
                         })
@@ -355,29 +360,48 @@
         }
 
         function playVoice(text) {
-            // Visual Switch
-            normalVid.classList.add('hidden');
-            speakingVid.classList.remove('hidden');
-            speakingVid.currentTime = 0;
-            speakingVid.play();
+    window.speechSynthesis.cancel();
+    
+    // Visual switch
+    normalVid.classList.add('hidden');
+    speakingVid.classList.remove('hidden');
+    speakingVid.currentTime = 0;
+    speakingVid.play().catch(()=>{});
 
-            // Real Realistic Voice (Using Browser Speech for now, 
-            // but can be linked to your openai.fm API)
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'hi-IN';
-            utterance.pitch = 1.2;
-            utterance.rate = 0.9;
-            utterance.volume = 1.0;
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Sabhi available voices ko fetch karein
+    let voices = window.speechSynthesis.getVoices();
+    
+    // Priority: Pehle Edge ki 'Natural' voices dhundhein (Madhur ya Swara)
+    let selectedVoice = voices.find(v => v.name.includes('Natural') && v.lang.includes('hi')) || 
+                        voices.find(v => v.name.includes('Google') && v.lang.includes('hi')) ||
+                        voices.find(v => v.lang.includes('hi'));
 
-            utterance.onend = () => {
-                speakingVid.pause();
-                speakingVid.classList.add('hidden');
-                normalVid.classList.remove('hidden');
-                normalVid.play();
-            };
+    if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        console.log("Using Voice: " + selectedVoice.name);
+    }
 
-            window.speechSynthesis.speak(utterance);
-        }
+    utterance.lang = 'hi-IN';
+    utterance.pitch = 1.1; 
+    utterance.rate = 1.0; 
+
+    utterance.onend = () => {
+        speakingVid.pause();
+        speakingVid.classList.add('hidden');
+        normalVid.classList.remove('hidden');
+        normalVid.play();
+    };
+
+    window.speechSynthesis.speak(utterance);
+}
+
+// Ye line zaroori hai kyunki browser voices load hone mein time leta hai
+window.speechSynthesis.onvoiceschanged = () => {
+    window.speechSynthesis.getVoices();
+};
+
     </script>
 </body>
 </html>
