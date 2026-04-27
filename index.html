@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Zodiac AI Assistant</title>
+    <title>SARA AI Assistant</title>
     <style>
         /* CSS Section */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -147,6 +147,7 @@
             <input type="text" id="api-1" placeholder="Groq API Key 1">
             <input type="text" id="api-2" placeholder="Groq API Key 2">
             <input type="text" id="api-3" placeholder="Groq API Key 3">
+          
             <textarea id="ai-prompt" rows="3" placeholder="AI Personality Prompt"></textarea>
             <button onclick="saveSettings()">SAVE & START</button>
         </div>
@@ -179,6 +180,11 @@
             <button id="mic-btn" onclick="toggleMic()">🎤</button>
         </div>
     </div>
+    
+<script src="coi-serviceworker.js"></script>
+    
+<script src="https://cdn.jsdelivr.net/npm/sherpa-onnx-wasm@1.9.10/dist/sherpa-onnx.js"></script>
+
 
     <script>
         /* JavaScript Section */
@@ -225,32 +231,33 @@
         }
 
         function saveSettings() {
-            const data = {
-                userName: document.getElementById('user-name').value,
-                appPass: document.getElementById('app-pass').value,
-                apiKeys: [
-                    document.getElementById('api-1').value,
-                    document.getElementById('api-2').value,
-                    document.getElementById('api-3').value
-                ].filter(k => k.trim() !== ""),
-                prompt: document.getElementById('ai-prompt').value
-            };
-            
-            if(!data.appPass || data.apiKeys.length === 0) {
-                alert("Password aur kam se kam ek API key zaroori hai!");
-                return;
-            }
+    const data = {
+        userName: document.getElementById('user-name').value,
+        appPass: document.getElementById('app-pass').value,
+        apiKeys: [
+            document.getElementById('api-1').value,
+            document.getElementById('api-2').value,
+            document.getElementById('api-3').value
+        ].filter(k => k.trim() !== ""),
+        
+        prompt: document.getElementById('ai-prompt').value
+    };
+    
+    if(!data.appPass || data.apiKeys.length === 0) {
+        alert("Password, Chat API keys zaroori hain!");
+        return;
+    }
 
-            localStorage.setItem('ai_settings', JSON.stringify(data));
-            settings = data;
-            location.reload();
-        }
+    localStorage.setItem('ai_settings', JSON.stringify(data));
+    settings = data;
+    location.reload();
+}
+
 
         function showSettings() {
     document.getElementById('main-screen').classList.add('hidden');
     document.getElementById('login-screen').classList.remove('hidden');
     
-    // Safety check ke saath values load karein taaki error na aaye
     if (settings) {
         document.getElementById('user-name').value = settings.userName || "";
         document.getElementById('app-pass').value = settings.appPass || "";
@@ -263,9 +270,17 @@
 
 
         function clearMemory() {
-            chatHistory = [];
-            alert("Memory cleared!");
-        }
+    // Pop-up dikhane ke liye confirm use karenge
+    const confirmation = confirm("Kya aap saari memory delete karna chahte hain? Isse purani baatein SARA bhool jayegi.");
+    
+    if (confirmation) {
+        chatHistory = []; // Memory clear kar di
+        alert("Saari memory delete ho gayi hai!");
+    } else {
+        // Agar user 'Cancel' dabata hai toh kuch nahi hoga
+        console.log("Memory clear cancel kar di gayi.");
+    }
+}
 
         // Voice Recognition setup
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -359,48 +374,70 @@
             }
         }
 
-        function playVoice(text) {
-    window.speechSynthesis.cancel();
-    
-    // Visual switch
-    normalVid.classList.add('hidden');
-    speakingVid.classList.remove('hidden');
-    speakingVid.currentTime = 0;
-    speakingVid.play().catch(()=>{});
+       let tts = null; // Global variable for TTS engine
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Sabhi available voices ko fetch karein
-    let voices = window.speechSynthesis.getVoices();
-    
-    // Priority: Pehle Edge ki 'Natural' voices dhundhein (Madhur ya Swara)
-    let selectedVoice = voices.find(v => v.name.includes('Natural') && v.lang.includes('hi')) || 
-                        voices.find(v => v.name.includes('Google') && v.lang.includes('hi')) ||
-                        voices.find(v => v.lang.includes('hi'));
-
-    if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        console.log("Using Voice: " + selectedVoice.name);
-    }
-
-    utterance.lang = 'hi-IN';
-    utterance.pitch = 1.1; 
-    utterance.rate = 1.0; 
-
-    utterance.onend = () => {
-        speakingVid.pause();
-        speakingVid.classList.add('hidden');
-        normalVid.classList.remove('hidden');
-        normalVid.play();
+async function initTTS() {
+    // Model files ke paths (aap inhe Hugging Face se link kar sakte hain)
+    const config = {
+        model: "https://huggingface.co/csukuangfj/sherpa-onnx-tts-hi-vits-ljspeech/resolve/main/model.onnx",
+        tokens: "https://huggingface.co/csukuangfj/sherpa-onnx-tts-hi-vits-ljspeech/resolve/main/tokens.txt",
+        dataDir: "https://huggingface.co/csukuangfj/sherpa-onnx-tts-hi-vits-ljspeech/resolve/main/"
     };
-
-    window.speechSynthesis.speak(utterance);
+    
+    // Sherpa-ONNX Engine initialize karein
+    tts = await sherpaOnnx.createOfflineTts(config);
+    console.log("SARA Offline Voice Ready!");
 }
 
-// Ye line zaroori hai kyunki browser voices load hone mein time leta hai
-window.speechSynthesis.onvoiceschanged = () => {
-    window.speechSynthesis.getVoices();
-};
+async function playVoice(text) {
+    try {
+        if (!tts) {
+            console.log("Model load ho raha hai, thoda intezar karein...");
+            await initTTS(); 
+        }
+
+        // Animation Start
+        normalVid.classList.add('hidden');
+        speakingVid.classList.remove('hidden');
+        speakingVid.play().catch(()=>{});
+
+        // Correct way to generate audio for Sherpa-ONNX
+        // sid: 0 ka matlab hai default voice
+        const audioData = tts.generate({
+            text: text,
+            sid: 0, 
+            speed: 1.0
+        });
+
+        const blob = new Blob([audioData.samples.buffer], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        
+        const audio = new Audio(url);
+        
+        audio.onended = () => {
+            resetVideo();
+            URL.revokeObjectURL(url);
+        };
+
+        audio.onerror = () => {
+            console.error("Audio playback mein galti!");
+            resetVideo();
+        };
+
+        await audio.play();
+
+    } catch (error) {
+        console.error("Sherpa TTS Error:", error);
+        resetVideo();
+    }
+}
+
+function resetVideo() {
+    speakingVid.pause();
+    speakingVid.classList.add('hidden');
+    normalVid.classList.remove('hidden');
+    normalVid.play().catch(()=>{});
+}
 
     </script>
 </body>
